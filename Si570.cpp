@@ -16,7 +16,7 @@
 #define IF_FREQ   (19997000L)
 
 // Debug output
-static void debug(char const *fmt, ... ) 
+static void debug(char const *fmt, ... )
 {
   char tmp[128]; // resulting string limited to 128 chars
   va_list args;
@@ -27,7 +27,7 @@ static void debug(char const *fmt, ... )
 }
 
 // Debug output without outputting a newline
-static void debugx(char const *fmt, ... ) 
+static void debugx(char const *fmt, ... )
 {
   char tmp[128]; // resulting string limited to 128 chars
   va_list args;
@@ -37,7 +37,7 @@ static void debugx(char const *fmt, ... )
   Serial.print(tmp);
 }
 
-// Memory dump 
+// Memory dump
 static void dump(const void *mem, int n)
 {
   const unsigned char *p = reinterpret_cast<const unsigned char *>( mem );
@@ -49,7 +49,7 @@ static void dump(const void *mem, int n)
 }
 
 // Initialize the Si570 and determine its internal crystal frequency given the default output frequency
-Si570::Si570(uint8_t si570_address, uint32_t calibration_frequency) 
+Si570::Si570(uint8_t si570_address, uint32_t calibration_frequency)
 {
   i2c_address = si570_address;
   debug("Si570 init, calibration frequency = %lu", calibration_frequency);
@@ -62,12 +62,14 @@ Si570::Si570(uint8_t si570_address, uint32_t calibration_frequency)
   // We are about the reset the Si570, so set the current and center frequency to the calibration frequency.
   f_center = frequency = calibration_frequency;
 
+  max_delta = ((uint64_t) f_center * 10035LL / 10000LL) - f_center;
+
   // Force Si570 to reset to initial freq
   debug("Resetting Si570");
   i2c_write(135,0x01);
   delay(20);
 
-  if (read_si570()) 
+  if (read_si570())
   {
     debug("Successfully initialized Si570");
     freq_xtal = (unsigned long) ((uint64_t) calibration_frequency * getHSDIV() * getN1() * (1L << 28) / getRFREQ());
@@ -138,7 +140,7 @@ int Si570::i2c_write(uint8_t reg_address, uint8_t *data, uint8_t length)
   Wire.write(data, length);
 
   int error = Wire.endTransmission();
-  if (error != 0) 
+  if (error != 0)
   {
     debug("Error writing %i bytes to register %i: %i", length, reg_address, error);
     return -1;
@@ -147,7 +149,7 @@ int Si570::i2c_write(uint8_t reg_address, uint8_t *data, uint8_t length)
 }
 
 // Read a one byte register from the I2C device
-uint8_t Si570::i2c_read(uint8_t reg_address) 
+uint8_t Si570::i2c_read(uint8_t reg_address)
 {
   uint8_t rdata = 0xFF;
   Wire.beginTransmission(i2c_address);
@@ -166,14 +168,14 @@ int Si570::i2c_read(uint8_t reg_address, uint8_t *output, uint8_t length) {
   Wire.write(reg_address);
 
   int error = Wire.endTransmission();
-  if (error != 0) 
+  if (error != 0)
   {
     debug("Error reading %i bytes from register %i. endTransmission() returned %i", reg_address, error);
     return 0;
   }
 
   int len = Wire.requestFrom(i2c_address,length);
-  if (len != length) 
+  if (len != length)
   {
     debug("Requested %i bytes and only got %i bytes", length, len);
   }
@@ -186,10 +188,10 @@ int Si570::i2c_read(uint8_t reg_address, uint8_t *output, uint8_t length) {
 // Read the Si570 chip and populate dco_reg values
 bool Si570::read_si570(){
   // Try 3 times to read the registers
-  for (int i = 0; i < 3; i++) 
+  for (int i = 0; i < 3; i++)
   {
     // we have to read eight consecutive registers starting at register 7
-    if (i2c_read(7, &(dco_reg[7]), 6) == 6) 
+    if (i2c_read(7, &(dco_reg[7]), 6) == 6)
     {
       return true;
     }
@@ -244,22 +246,22 @@ int Si570::findDivisors(uint32_t fout)
 
   // Floor of the division
   uint16_t maxDivider = fDCOMaxkHz / fout_kHz;
- 
+
   // Ceiling of the division
   n1 = 1 + ((fDCOMinkHz - 1) / fout_kHz / 11);
 
   if (n1 < 1 || n1 > 128)
     return SI570_ERROR;
 
-  while (n1 <= 128) 
+  while (n1 <= 128)
   {
     if (0 == n1 % 2 || 1 == n1)
     {
       // Try each divisor from largest to smallest order to minimize power
-      for (int i = 0; i < 6 ; ++i) 
+      for (int i = 0; i < 6 ; ++i)
       {
         hs = HS_DIV[i];
-        if (hs * n1 <= maxDivider) 
+        if (hs * n1 <= maxDivider)
           return SI570_SUCCESS;
       }
     }
@@ -283,7 +285,7 @@ void Si570::setRFREQ(uint32_t fnew)
   // Reset all Si570 registers
   for (int i = 7; i <= 12; i++)
     dco_reg[i] = 0;
-  
+
   // Set up the RFREQ register values
   dco_reg[12] = rfreq & 0xff;
   dco_reg[11] = rfreq >> 8 & 0xff;
@@ -299,32 +301,34 @@ void Si570::setRFREQ(uint32_t fnew)
 }
 
 // Set the Si570 frequency
-Si570_Status Si570::setFrequency(uint32_t newfreq) 
+Si570_Status Si570::setFrequency(uint32_t newfreq)
 {
   // If the current frequency has not changed, we are done
   if (frequency == newfreq)
     return status;
 
   // Check how far we have moved the frequency
-  uint32_t delta_freq = abs(newfreq - f_center);
-
-  // Calculate a 3500 ppm frequency change
-  uint32_t max_delta = f_center * 10035 / 10000;
+  uint32_t delta_freq = newfreq < f_center ? f_center - newfreq : newfreq - f_center;
 
   // If the jump is small enough, we don't have to fiddle with the dividers
-  if (delta_freq < max_delta) 
+  if (delta_freq < max_delta)
   {
     setRFREQ(newfreq);
     frequency = newfreq;
     qwrite_si570();
   }
-  else 
+  else
   {
     // otherwise it is a big jump and we need a new set of divisors and reset center frequency
     int err = findDivisors(newfreq);
     setRFREQ(newfreq);
+    // Set the new center frequency
     f_center = frequency = newfreq;
+    // Calculate the new 3500 ppm delta
+    max_delta = ((uint64_t) f_center * 10035LL / 10000LL) - f_center;
     write_si570();
   }
+
   return status;
+
 }
