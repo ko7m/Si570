@@ -1,3 +1,5 @@
+#include<stdint.h>
+
 typedef enum
 {
   SI570_ERROR = 0,
