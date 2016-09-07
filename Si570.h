@@ -1,4 +1,6 @@
-typedef enum 
+#include<stdint.h>
+
+typedef enum
 {
   SI570_ERROR = 0,
   SI570_READY,
@@ -23,6 +25,7 @@ private:
   uint32_t freq_xtal;
   uint64_t fdco;
   uint64_t rfreq;
+  uint32_t max_delta;
 
   uint8_t i2c_read(uint8_t reg_address);
   int i2c_read(uint8_t reg_address, uint8_t *output, uint8_t length);
