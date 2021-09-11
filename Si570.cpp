@@ -90,7 +90,7 @@ void Si570::debugSi570()
 {
   debug(" --- Si570 Debug Info ---");
   debug("Status: %i", status);
-  for (int i = 7; i < 15; i++) {
+  for (int i = 7; i < 13; i++) {
     debug("Register[%i] = %02x", i, dco_reg[i]);
   }
   debug("HSDIV = %i, N1 = %i", getHSDIV(), getN1());
@@ -280,7 +280,7 @@ void Si570::setRFREQ(uint32_t fnew)
   rfreq = (fdco << 28) / freq_xtal;
 
   // Round the result
-  rfreq = rfreq + ((rfreq & 1<<(28-1))<<1);
+  rfreq = rfreq + ((rfreq & 1L<<(28-1))<<1);
 
   // Reset all Si570 registers
   for (int i = 7; i <= 12; i++)
